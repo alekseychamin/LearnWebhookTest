@@ -25,6 +25,7 @@ jobs:
           cat build-input/source.b64.part* | base64 --decode > /tmp/foldui-source.tar.gz
           echo "206bec8ff4045710838b8f9f65b220b79fe67d4d3caa560e1db7b9b6fe7a2222  /tmp/foldui-source.tar.gz" | sha256sum -c -
           tar -xzf /tmp/foldui-source.tar.gz -C .
+          bash build-input/apply-source-fixes.sh
           test -f settings.gradle
           test -f app/src/main/AndroidManifest.xml
 
