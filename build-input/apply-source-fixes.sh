@@ -25,11 +25,19 @@ path = root / 'RescueAccessibilityService.java'
 text = path.read_text(encoding='utf-8')
 text = text.replace(
     'panelParams.accessibilityTitle = "Fold UI Rescue";',
-    'panelParams.setAccessibilityTitle("Fold UI Rescue");'
+    'panelParams.setTitle("Fold UI Rescue");'
 )
 text = text.replace(
     'params.accessibilityTitle = "Диагностика элементов YoloPrice";',
-    'params.setAccessibilityTitle("Диагностика элементов YoloPrice");'
+    'params.setTitle("Диагностика элементов YoloPrice");'
+)
+text = text.replace(
+    'panelParams.setAccessibilityTitle("Fold UI Rescue");',
+    'panelParams.setTitle("Fold UI Rescue");'
+)
+text = text.replace(
+    'params.setAccessibilityTitle("Диагностика элементов YoloPrice");',
+    'params.setTitle("Диагностика элементов YoloPrice");'
 )
 path.write_text(text, encoding='utf-8')
 PY
