@@ -3,6 +3,8 @@ name: Export baseline source
 on:
   push:
     branches: [ agent/folduirescue-yoloprice ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
