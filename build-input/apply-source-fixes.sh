@@ -26,7 +26,9 @@ cat build-input/v020-overrides.b64.part* | base64 --decode > /tmp/folduirescue-v
 echo "7c395dfdc03020e9aee18835ed705bff48039f0fb332c7ab78ac69ee24da2f56  /tmp/folduirescue-v020-overrides.tar.gz" | sha256sum -c -
 tar -xzf /tmp/folduirescue-v020-overrides.tar.gz -C .
 
-cat build-input/v021-overrides.b64 | base64 --decode > /tmp/folduirescue-v021-overrides.tar.gz
+# The first attempt at storing this archive as one large text file is retained only
+# for traceability. The verified split files below are the authoritative build input.
+cat build-input/v021-overrides.b64.part* | base64 --decode > /tmp/folduirescue-v021-overrides.tar.gz
 echo "82bb9671f63c426e33b841f24c7df08593bb401b7ae8a3100d3f6fc0850d60a1  /tmp/folduirescue-v021-overrides.tar.gz" | sha256sum -c -
 tar -xzf /tmp/folduirescue-v021-overrides.tar.gz -C .
 
