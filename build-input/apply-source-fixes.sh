@@ -41,3 +41,5 @@ text = text.replace(
 )
 path.write_text(text, encoding='utf-8')
 PY
+
+patch --batch --forward -p1 < build-input/panel-blink-fix.patch
