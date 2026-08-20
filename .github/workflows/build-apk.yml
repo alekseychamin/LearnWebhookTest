@@ -1,4 +1,4 @@
-name: Build diagnostic APK
+name: Build Fold UI Rescue APK
 
 on:
   push:
@@ -28,6 +28,7 @@ jobs:
           bash build-input/apply-source-fixes.sh
           test -f settings.gradle
           test -f app/src/main/AndroidManifest.xml
+          test -f app/src/main/java/com/openai/folduirescue/RescueActionResolver.java
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -56,33 +57,36 @@ jobs:
           echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
 
-      - name: Build debug APK
+      - name: Build beta APK
         run: gradle --no-daemon --stacktrace :app:assembleDebug
 
-      - name: Verify APK signature and permissions
+      - name: Verify APK signature, version and permissions
         shell: bash
         run: |
           set -euo pipefail
           APK=app/build/outputs/apk/debug/app-debug.apk
+          OUTPUT=FoldUiRescue-YoloPrice-0.2.0-beta.apk
           test -s "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" | tee signature.txt
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions "$APK" | tee permissions.txt
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee badging.txt
-          grep -q "versionName='0.1.1-diagnostic'" badging.txt
+          grep -q "package: name='com.openai.folduirescue.yoloprice'" badging.txt
+          grep -q "versionCode='3'" badging.txt
+          grep -q "versionName='0.2.0-beta'" badging.txt
           if grep -q 'android.permission.INTERNET' permissions.txt; then
             echo "Unexpected INTERNET permission" >&2
             exit 1
           fi
-          cp "$APK" FoldUiRescue-YoloPrice-Diagnostic-0.1.1.apk
-          sha256sum FoldUiRescue-YoloPrice-Diagnostic-0.1.1.apk | tee FoldUiRescue-YoloPrice-Diagnostic-0.1.1.sha256
+          cp "$APK" "$OUTPUT"
+          sha256sum "$OUTPUT" | tee FoldUiRescue-YoloPrice-0.2.0-beta.sha256
 
       - name: Upload verified APK
         uses: actions/upload-artifact@v4
         with:
-          name: FoldUiRescue-YoloPrice-Diagnostic-0.1.1
+          name: FoldUiRescue-YoloPrice-0.2.0-beta
           path: |
-            FoldUiRescue-YoloPrice-Diagnostic-0.1.1.apk
-            FoldUiRescue-YoloPrice-Diagnostic-0.1.1.sha256
+            FoldUiRescue-YoloPrice-0.2.0-beta.apk
+            FoldUiRescue-YoloPrice-0.2.0-beta.sha256
             permissions.txt
             signature.txt
             badging.txt
