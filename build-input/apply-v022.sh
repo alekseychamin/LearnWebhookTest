@@ -9,7 +9,8 @@ import hashlib
 BASE64_ALPHABET = b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/='
 EXPECTED_PARTS = [
     ('v022-overrides.b64.part00', 8192, '7abe0211386a5457a4960b9688229bbda9ffecf3cbaa19df0b70c0230e24e00c'),
-    ('v022-overrides.b64.part01', 8192, 'fd8862819cf87c078303259bbf3d2031c50baee34e13e3c55a1626e28742175f'),
+    ('v022-overrides.b64.part01a', 4096, '5afdbe4e02e5445b1c8b725b0a465755668f047667a9991816ab7e555ab345f2'),
+    ('v022-overrides.b64.part01b', 4096, 'd0f1c61285fee1f00a1455ef12a952170e25beb5b641e07eb27b351d8bf05bd7'),
     ('v022-overrides.b64.part02', 8192, '35ff1103cb9778ca7fbcfd5712f12a2f0e319e00b7f97aea252c0a5909e2bf16'),
     ('v022-overrides.b64.part03', 8192, 'f925b1de64481a487cb0ab82ec9df1e7fbd32dd2497a4657ebe6b689b513ac8f'),
     ('v022-overrides.b64.part04', 1188, '307d493826989da9bb392d386a11f734fd6f00ae2b4bda6b3e075c0e83495512'),
