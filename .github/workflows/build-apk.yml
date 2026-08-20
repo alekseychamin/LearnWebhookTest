@@ -67,21 +67,24 @@ jobs:
           test -s "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" | tee signature.txt
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions "$APK" | tee permissions.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee badging.txt
+          grep -q "versionName='0.1.1-diagnostic'" badging.txt
           if grep -q 'android.permission.INTERNET' permissions.txt; then
             echo "Unexpected INTERNET permission" >&2
             exit 1
           fi
-          cp "$APK" FoldUiRescue-YoloPrice-Diagnostic-0.1.apk
-          sha256sum FoldUiRescue-YoloPrice-Diagnostic-0.1.apk | tee FoldUiRescue-YoloPrice-Diagnostic-0.1.sha256
+          cp "$APK" FoldUiRescue-YoloPrice-Diagnostic-0.1.1.apk
+          sha256sum FoldUiRescue-YoloPrice-Diagnostic-0.1.1.apk | tee FoldUiRescue-YoloPrice-Diagnostic-0.1.1.sha256
 
       - name: Upload verified APK
         uses: actions/upload-artifact@v4
         with:
-          name: FoldUiRescue-YoloPrice-Diagnostic-0.1
+          name: FoldUiRescue-YoloPrice-Diagnostic-0.1.1
           path: |
-            FoldUiRescue-YoloPrice-Diagnostic-0.1.apk
-            FoldUiRescue-YoloPrice-Diagnostic-0.1.sha256
+            FoldUiRescue-YoloPrice-Diagnostic-0.1.1.apk
+            FoldUiRescue-YoloPrice-Diagnostic-0.1.1.sha256
             permissions.txt
             signature.txt
+            badging.txt
           if-no-files-found: error
           retention-days: 7
