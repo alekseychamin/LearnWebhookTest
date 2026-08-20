@@ -1,0 +1,256 @@
+--- a/app/src/main/java/com/openai/folduirescue/RescueAccessibilityService.java
++++ b/app/src/main/java/com/openai/folduirescue/RescueAccessibilityService.java
+@@ -52,9 +52,11 @@
+     static final String TARGET_PACKAGE = "com.yolo_price_mobile";
+     static final String ACTION_STATE_CHANGED = "com.openai.folduirescue.STATE_CHANGED";
+ 
++    private static final long PANEL_VISIBILITY_DEBOUNCE_MS = 180L;
+     private static volatile RescueAccessibilityService instance;
+ 
+     private final Handler mainHandler = new Handler(Looper.getMainLooper());
++    private final Runnable panelVisibilityRefresh = this::refreshPanelVisibilityFromWindows;
+     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
+     private final AtomicBoolean captureInProgress = new AtomicBoolean(false);
+ 
+@@ -108,12 +110,14 @@
+         String packageName = JsonUtil.asString(event.getPackageName());
+         int type = event.getEventType();
+ 
+-        if ((type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+-                || type == AccessibilityEvent.TYPE_WINDOWS_CHANGED)
+-                && !packageName.isBlank()
+-                && !getPackageName().equals(packageName)) {
+-            foregroundPackage = packageName;
+-            updatePanelVisibility();
++        if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
++                || type == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
++            // Accessibility overlays themselves generate TYPE_WINDOWS_CHANGED events.
++            // Resolving the foreground package directly from event.getPackageName() caused
++            // a feedback loop on Samsung One UI: show -> system window event -> hide ->
++            // target window event -> show. Read the active TYPE_APPLICATION window instead
++            // and debounce the update so transient System UI windows cannot make the panel blink.
++            schedulePanelVisibilityRefresh();
+         }
+ 
+         if (!SessionManager.isActive(this)) {
+@@ -167,6 +171,7 @@
+ 
+     @Override
+     public void onDestroy() {
++        mainHandler.removeCallbacks(panelVisibilityRefresh);
+         removeDialog();
+         removePanel();
+         logSimpleEvent("ACCESSIBILITY_SERVICE_DESTROYED", null);
+@@ -179,17 +184,18 @@
+     @Override
+     public void onConfigurationChanged(Configuration newConfig) {
+         super.onConfigurationChanged(newConfig);
++        // Do not remove and recreate the floating panel on every configuration callback.
++        // Foldables can emit several callbacks while window metrics and system bars settle.
+         removeDialog();
+-        removePanel();
+-        mainHandler.postDelayed(this::syncSessionUi, 250);
++        mainHandler.postDelayed(this::clampAndUpdatePanelPosition, 120);
++        schedulePanelVisibilityRefresh(260L);
+     }
+ 
+     void syncSessionUi() {
+         if (SessionManager.isActive(this)) {
+-            if (TARGET_PACKAGE.equals(foregroundPackage) || foregroundPackage.isBlank()) {
+-                showPanel();
+-            }
++            schedulePanelVisibilityRefresh(80L);
+         } else {
++            mainHandler.removeCallbacks(panelVisibilityRefresh);
+             removeDialog();
+             removePanel();
+         }
+@@ -203,7 +209,7 @@
+             runAfter(afterCompletion);
+             return;
+         }
+-        if (!TARGET_PACKAGE.equals(foregroundPackage) && !foregroundPackage.isBlank()) {
++        if (!isTargetApplicationActive()) {
+             toast("Вернитесь в YoloPrice перед созданием снимка");
+             runAfter(afterCompletion);
+             return;
+@@ -539,7 +545,7 @@
+             writeActionResult(candidate, "ACTION_CLICK", result, candidate.actionPath);
+             toast(result ? "ACTION_CLICK принят Android" : "ACTION_CLICK не выполнен");
+             mainHandler.postDelayed(() -> {
+-                if (TARGET_PACKAGE.equals(foregroundPackage)) {
++                if (isTargetApplicationActive()) {
+                     requestCheckpoint("after_click_" + safeReason, null);
+                 }
+             }, 1_100);
+@@ -831,19 +837,109 @@
+         }
+     }
+ 
++    private void schedulePanelVisibilityRefresh() {
++        schedulePanelVisibilityRefresh(PANEL_VISIBILITY_DEBOUNCE_MS);
++    }
++
++    private void schedulePanelVisibilityRefresh(long delayMs) {
++        mainHandler.removeCallbacks(panelVisibilityRefresh);
++        mainHandler.postDelayed(panelVisibilityRefresh, Math.max(0L, delayMs));
++    }
++
++    private void refreshPanelVisibilityFromWindows() {
++        if (!SessionManager.isActive(this)) {
++            removeDialog();
++            removePanel();
++            return;
++        }
++
++        String resolvedPackage = resolveForegroundApplicationPackage();
++        if (resolvedPackage.isBlank()) {
++            // A short window-rebuild interval is normal on a foldable. Keep the current
++            // visibility instead of interpreting an unknown package as an app switch.
++            return;
++        }
++        foregroundPackage = resolvedPackage;
++        updatePanelVisibility();
++    }
++
++    private String resolveForegroundApplicationPackage() {
++        List<AccessibilityWindowInfo> windows = getWindows();
++        String focusedPackage = "";
++        String fallbackPackage = "";
++        if (windows != null) {
++            for (AccessibilityWindowInfo window : windows) {
++                if (window == null
++                        || window.getType() != AccessibilityWindowInfo.TYPE_APPLICATION) {
++                    continue;
++                }
++                AccessibilityNodeInfo root = window.getRoot();
++                String packageName = root == null
++                        ? ""
++                        : JsonUtil.asString(root.getPackageName());
++                if (packageName.isBlank()) {
++                    continue;
++                }
++                if (fallbackPackage.isBlank()) {
++                    fallbackPackage = packageName;
++                }
++                if (window.isActive()) {
++                    return packageName;
++                }
++                if (window.isFocused()) {
++                    focusedPackage = packageName;
++                }
++            }
++        }
++        if (!focusedPackage.isBlank()) {
++            return focusedPackage;
++        }
++        if (!fallbackPackage.isBlank()) {
++            return fallbackPackage;
++        }
++
++        AccessibilityNodeInfo activeRoot = getRootInActiveWindow();
++        return activeRoot == null ? "" : JsonUtil.asString(activeRoot.getPackageName());
++    }
++
++    private boolean isTargetApplicationActive() {
++        String resolvedPackage = resolveForegroundApplicationPackage();
++        if (!resolvedPackage.isBlank()) {
++            foregroundPackage = resolvedPackage;
++        }
++        return TARGET_PACKAGE.equals(foregroundPackage);
++    }
++
+     private void updatePanelVisibility() {
+         if (!SessionManager.isActive(this)) {
+             removeDialog();
+             removePanel();
+             return;
+         }
+-        if (TARGET_PACKAGE.equals(foregroundPackage) || foregroundPackage.isBlank()) {
++        if (TARGET_PACKAGE.equals(foregroundPackage)) {
+             showPanel();
+-            if (panelView != null) {
++            if (panelView != null && panelView.getVisibility() != View.VISIBLE) {
+                 panelView.setVisibility(View.VISIBLE);
+             }
+-        } else if (panelView != null && dialogView == null) {
++        } else if (panelView != null
++                && dialogView == null
++                && panelView.getVisibility() != View.GONE) {
+             panelView.setVisibility(View.GONE);
++        }
++    }
++
++    private void clampAndUpdatePanelPosition() {
++        if (panelView == null || panelParams == null || windowManager == null) {
++            return;
++        }
++        int displayWidth = getResources().getDisplayMetrics().widthPixels;
++        int displayHeight = getResources().getDisplayMetrics().heightPixels;
++        panelParams.x = Math.max(0, Math.min(panelParams.x, Math.max(0, displayWidth - dp(48))));
++        panelParams.y = Math.max(0, Math.min(panelParams.y, Math.max(0, displayHeight - dp(120))));
++        try {
++            windowManager.updateViewLayout(panelView, panelParams);
++        } catch (RuntimeException exception) {
++            logSimpleEvent("OVERLAY_UPDATE_FAILED", exception.getMessage());
+         }
+     }
+ 
+@@ -919,13 +1015,13 @@
+     }
+ 
+     private void restoreOverlayAfterCapture() {
+-        if (dialogView != null) {
++        if (dialogView != null && isTargetApplicationActive()) {
+             dialogView.setVisibility(View.VISIBLE);
+         }
+         if (panelView != null) {
+-            panelView.setVisibility(View.VISIBLE);
++            panelView.setVisibility(isTargetApplicationActive() ? View.VISIBLE : View.GONE);
+         } else {
+-            updatePanelVisibility();
++            schedulePanelVisibilityRefresh(40L);
+         }
+     }
+ 
+--- a/app/src/main/java/com/openai/folduirescue/MainActivity.java
++++ b/app/src/main/java/com/openai/folduirescue/MainActivity.java
+@@ -185,7 +185,7 @@
+         privacy.addView(privacyText, matchWrap());
+         root.addView(privacy, cardParams());
+ 
+-        TextView version = text("Версия 0.1.0-diagnostic • целевой пакет: "
++        TextView version = text("Версия 0.1.1-diagnostic • целевой пакет: "
+                 + RescueAccessibilityService.TARGET_PACKAGE, 12, false);
+         version.setTextColor(Color.GRAY);
+         version.setPadding(0, dp(16), 0, 0);
+--- a/app/build.gradle
++++ b/app/build.gradle
+@@ -10,8 +10,8 @@
+         applicationId 'com.openai.folduirescue.yoloprice'
+         minSdk 29
+         targetSdk 35
+-        versionCode 1
+-        versionName '0.1.0-diagnostic'
++        versionCode 2
++        versionName '0.1.1-diagnostic'
+     }
+ 
+     buildTypes {
+--- a/README.md
++++ b/README.md
+@@ -1,4 +1,4 @@
+-# Fold UI Rescue — YoloPrice diagnostic 0.1
++# Fold UI Rescue — YoloPrice diagnostic 0.1.1
+ 
+ Диагностическое Android-приложение для Samsung Galaxy Z Fold8. Оно использует `AccessibilityService`, чтобы во время вручную запущенного сеанса собрать дерево интерфейса YoloPrice (`com.yolo_price_mobile`), координаты и действия узлов, снимки экрана и журнал событий.
+ 
+@@ -49,3 +49,8 @@
+ 5. Повторить те же действия на раскрытом Fold для сеанса «Внутренний экран».
+ 6. В главном окне нажать `Создать ZIP в Downloads`.
+ 7. Передать ZIP из `Downloads/FoldUiRescue` для анализа.
++
++
++## 0.1.1
++
++Исправлено постоянное мерцание плавающей панели на Samsung One UI: активное приложение теперь определяется по активному окну типа `TYPE_APPLICATION`, события окна обрабатываются с задержкой, а панель не пересоздаётся при промежуточных изменениях конфигурации Fold.

@@ -1,0 +1,39 @@
+name: Export baseline source
+
+on:
+  push:
+    branches: [ agent/folduirescue-yoloprice ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct baseline project
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat build-input/source.b64.part* | base64 --decode > /tmp/foldui-source.tar.gz
+          echo "206bec8ff4045710838b8f9f65b220b79fe67d4d3caa560e1db7b9b6fe7a2222  /tmp/foldui-source.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/foldui-source.tar.gz -C .
+          tar -czf FoldUiRescue-baseline-source.tar.gz app README.md build.gradle settings.gradle gradle.properties
+          sha256sum FoldUiRescue-baseline-source.tar.gz > FoldUiRescue-baseline-source.sha256
+
+      - name: Upload baseline source
+        uses: actions/upload-artifact@v4
+        with:
+          name: FoldUiRescue-baseline-source
+          path: |
+            FoldUiRescue-baseline-source.tar.gz
+            FoldUiRescue-baseline-source.sha256
+          if-no-files-found: error
+          retention-days: 1

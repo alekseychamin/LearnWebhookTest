@@ -1,0 +1,96 @@
+name: Build Fold UI Rescue APK
+
+on:
+  push:
+    branches: [ agent/folduirescue-yoloprice ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct project sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat build-input/source.b64.part* | base64 --decode > /tmp/foldui-source.tar.gz
+          echo "206bec8ff4045710838b8f9f65b220b79fe67d4d3caa560e1db7b9b6fe7a2222  /tmp/foldui-source.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/foldui-source.tar.gz -C .
+          bash build-input/apply-source-fixes.sh
+          bash build-input/apply-v022.sh
+          bash build-input/apply-v022-safety.sh
+          test -f settings.gradle
+          test -f app/src/main/AndroidManifest.xml
+          test -f app/src/main/java/com/openai/folduirescue/RescueActionResolver.java
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Install Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -perm -u+x 2>/dev/null | head -n 1 || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager was not found under $SDK_ROOT" >&2
+            find "$SDK_ROOT" -maxdepth 4 -type f -name sdkmanager -print >&2 || true
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+
+      - name: Build beta APK
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Verify APK signature, version and permissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          OUTPUT=FoldUiRescue-YoloPrice-0.2.2-beta.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" | tee signature.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions "$APK" | tee permissions.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee badging.txt
+          grep -q "package: name='com.openai.folduirescue.yoloprice'" badging.txt
+          grep -q "versionCode='5'" badging.txt
+          grep -q "versionName='0.2.2-beta'" badging.txt
+          if grep -q 'android.permission.INTERNET' permissions.txt; then
+            echo "Unexpected INTERNET permission" >&2
+            exit 1
+          fi
+          cp "$APK" "$OUTPUT"
+          sha256sum "$OUTPUT" | tee FoldUiRescue-YoloPrice-0.2.2-beta.sha256
+
+      - name: Upload verified APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FoldUiRescue-YoloPrice-0.2.2-beta
+          path: |
+            FoldUiRescue-YoloPrice-0.2.2-beta.apk
+            FoldUiRescue-YoloPrice-0.2.2-beta.sha256
+            permissions.txt
+            signature.txt
+            badging.txt
+          if-no-files-found: error
+          retention-days: 7
