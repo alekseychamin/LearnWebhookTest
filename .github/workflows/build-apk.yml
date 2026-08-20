@@ -27,6 +27,7 @@ jobs:
           tar -xzf /tmp/foldui-source.tar.gz -C .
           bash build-input/apply-source-fixes.sh
           bash build-input/apply-v022.sh
+          bash build-input/apply-v022-safety.sh
           test -f settings.gradle
           test -f app/src/main/AndroidManifest.xml
           test -f app/src/main/java/com/openai/folduirescue/RescueActionResolver.java
